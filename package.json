@@ -1,0 +1,19 @@
+{
+  "name": "michelin-jev-search",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Busca de restaurantes Michelin com o Jev (TypeSafe AI): amostragem por rodadas sobre 6.802 restaurantes, com mapa mundial",
+  "scripts": {
+    "serve": "node --env-file=.env.local server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/typesafe-ai": "^3.0.4",
+    "ai": "^7.0.111"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^5.9.3"
+  }
+}
