@@ -40,6 +40,15 @@
   h1 { font-size: 17px; margin: 0; font-weight: 650; }
   header .meta { color: var(--dim); font-size: 12.5px; }
   header .meta b { color: var(--text); font-weight: 600; }
+  .keybar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .keybar label { color: var(--dim); font-size: 12.5px; }
+  .keybar input {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--text); padding: 6px 9px; font: inherit; font-size: 12.5px; width: 240px;
+  }
+  .keybar input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .keybar input.falta { border-color: var(--bad); }
+  .keybar button { padding: 6px 10px; font-size: 12px; }
   main { flex: 1; display: flex; min-height: 0; }
   aside {
     width: 460px;
@@ -143,6 +152,12 @@
 <header>
   <h1>Michelin mundial com Jev</h1>
   <span class="meta" id="cabecalho">carregando catálogo…</span>
+  <div class="keybar">
+    <label for="chave">chave da TypeSafe</label>
+    <input type="password" id="chave" placeholder="apikey_…" autocomplete="off" spellcheck="false">
+    <button type="button" id="esquecer" class="ghost">esquecer</button>
+    <span class="meta" id="chave-estado"></span>
+  </div>
 </header>
 <main>
   <aside>
@@ -264,9 +279,54 @@ $('selecionar').addEventListener('click', () => {
 
 $('peso').addEventListener('input', () => { $('peso-out').textContent = `${$('peso').value}%`; });
 
+// ── chave da API ─────────────────────────────────────────────────────────────
+// Fica no localStorage deste navegador e vai em cada requisição ao servidor
+// local, que a repassa à TypeSafe sem guardar nem registrar nada.
+const KEY_STORAGE = 'michelin-jev-key';
+let serverHasKey = false;
+
+const chaveAtual = () => $('chave').value.trim();
+
+const cabecalhos = () => {
+  const key = chaveAtual();
+  return key
+    ? { 'content-type': 'application/json', 'x-typesafe-key': key }
+    : { 'content-type': 'application/json' };
+};
+
+function atualizarEstadoChave() {
+  const local = chaveAtual();
+  $('chave-estado').textContent = local
+    ? `usando a chave deste navegador (${local.slice(0, 8)}…${local.slice(-4)})`
+    : serverHasKey
+      ? 'usando a chave do servidor'
+      : 'sem chave — cole a sua para buscar';
+  $('chave').classList.toggle('falta', !local && !serverHasKey);
+}
+
+const chaveSalva = localStorage.getItem(KEY_STORAGE);
+if (chaveSalva) $('chave').value = chaveSalva;
+
+const gravarChave = () => {
+  const value = chaveAtual();
+  if (value) localStorage.setItem(KEY_STORAGE, value);
+  else localStorage.removeItem(KEY_STORAGE);
+  atualizarEstadoChave();
+};
+$('chave').addEventListener('input', gravarChave);
+$('chave').addEventListener('change', gravarChave);
+$('esquecer').addEventListener('click', () => {
+  localStorage.removeItem(KEY_STORAGE);
+  $('chave').value = '';
+  atualizarEstadoChave();
+});
+atualizarEstadoChave();
+
 // ── catálogo ─────────────────────────────────────────────────────────────────
 fetch('/api/catalog').then(response => response.json()).then(data => {
   catalog = data;
+  serverHasKey = Boolean(data.hasServerKey);
+  atualizarEstadoChave();
   $('cabecalho').innerHTML =
     `<b>${number(data.total)}</b> restaurantes no mapa · rodadas de <b>${data.roundSize}</b> · ` +
     `os <b>${data.keepBest}</b> melhores guiam a rodada seguinte`;
@@ -411,6 +471,16 @@ function renderResults(data) {
 }
 
 // ── chamadas ─────────────────────────────────────────────────────────────────
+function mostrarErro(prefixo, error) {
+  const message = error instanceof Error ? error.message : String(error);
+  $('status').className = 'status error';
+  $('status').textContent = `${prefixo}: ${message}`;
+  if (/chave/i.test(message)) {
+    $('chave').classList.add('falta');
+    $('chave').focus();
+  }
+}
+
 async function runSearch() {
   const request = $('pedido').value.trim();
   const button = $('buscar');
@@ -433,15 +503,14 @@ async function runSearch() {
   try {
     const response = await fetch('/api/search', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: cabecalhos(),
       body: JSON.stringify({ request, box, rounds, confidenceWeight }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     renderResults(data);
   } catch (error) {
-    $('status').className = 'status error';
-    $('status').textContent = `Falhou: ${error.message}`;
+    mostrarErro('Falhou', error);
   } finally {
     clearInterval(ticker);
     button.disabled = false;
@@ -462,7 +531,7 @@ $('conferir').addEventListener('click', async () => {
   try {
     const response = await fetch('/api/exhaustive', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: cabecalhos(),
       body: JSON.stringify({ request: last.request, judgedIds: last.judgedIds }),
     });
     const data = await response.json();
@@ -498,8 +567,7 @@ $('conferir').addEventListener('click', async () => {
     $('status').className = 'status';
     $('status').innerHTML = `conferência concluída · acerto das rodadas no top-20 exaustivo: <b>${Math.round((recall.hits / recall.topN) * 100)}%</b>`;
   } catch (error) {
-    $('status').className = 'status error';
-    $('status').textContent = `Conferência falhou: ${error.message}`;
+    mostrarErro('Conferência falhou', error);
   } finally {
     clearInterval(ticker);
     button.disabled = false;

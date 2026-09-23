@@ -46,6 +46,18 @@ const parseBox = (value: unknown): Box | null => {
     : null;
 };
 
+// A chave vem do navegador a cada chamada. O servidor só aceita também uma
+// variável de ambiente como conveniência de quem roda local — nunca a expõe
+// de volta ao cliente, e nunca a registra em log.
+const serverKey = () => (process.env.TYPESAFE_AI_API_KEY ?? '').trim();
+
+const keyOf = (header: string | string[] | undefined) => {
+  const fromHeader = (Array.isArray(header) ? header[0] : header ?? '').trim();
+  return fromHeader || serverKey();
+};
+
+const SEM_CHAVE = 'Cole a sua chave da TypeSafe no topo da página (console.typesafe.ai/keys).';
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   const route = `${req.method} ${url.pathname}`;
@@ -63,6 +75,7 @@ const server = createServer(async (req, res) => {
       roundSize: ROUND_SIZE,
       keepBest: KEEP_BEST,
       batchSize: BATCH_SIZE,
+      hasServerKey: Boolean(serverKey()),
       points,
     });
     return;
@@ -79,8 +92,13 @@ const server = createServer(async (req, res) => {
       const box = parseBox(body.box);
       const rounds = Math.max(1, Math.min(8, Number(body.rounds) || 4));
       const confidenceWeight = Math.max(0, Math.min(1, Number(body.confidenceWeight) || 0));
+      const apiKey = keyOf(req.headers['x-typesafe-key']);
+      if (!apiKey) {
+        send(res, 400, { error: SEM_CHAVE });
+        return;
+      }
 
-      const outcome = await search(request, { box, rounds, confidenceWeight });
+      const outcome = await search(request, { apiKey, box, rounds, confidenceWeight });
       console.log(
         `busca: "${request.slice(0, 44)}" → ${outcome.judged} julgados de ${outcome.poolSize} ` +
         `em ${outcome.rounds.length} rodada(s) · parou por ${outcome.stopped} · ` +
@@ -119,8 +137,13 @@ const server = createServer(async (req, res) => {
         send(res, 400, { error: 'Escreva um pedido com pelo menos 3 caracteres.' });
         return;
       }
+      const apiKey = keyOf(req.headers['x-typesafe-key']);
+      if (!apiKey) {
+        send(res, 400, { error: SEM_CHAVE });
+        return;
+      }
 
-      const { rows, meta } = await exhaustiveRank(request);
+      const { rows, meta } = await exhaustiveRank(request, apiKey);
       const top = rows.slice(0, 20);
       const hits = top.filter(row => judgedIds.has(row.id));
       const bestJudgedPosition = rows.findIndex(row => judgedIds.has(row.id)) + 1;

@@ -6,15 +6,24 @@ O Jev não gera texto: ele responde perguntas tipadas. Aqui cada restaurante vir
 
 ## Como rodar
 
-Precisa de Node 22+ (testado no 26) e de uma chave da TypeSafe.
+Precisa de Node 22+ (testado no 26) e de uma chave da TypeSafe ([console.typesafe.ai/keys](https://console.typesafe.ai/keys)).
 
 ```bash
 npm install
-cp .env.example .env.local     # preencha TYPESAFE_AI_API_KEY
 npm run serve                  # http://localhost:8788
 ```
 
-Escreva um pedido em português na caixa de texto e clique em **Buscar por rodadas**. `Conferir tudo` roda a pontuação exaustiva para medir o que a amostragem deixou de fora.
+Cole a chave no campo **chave da TypeSafe**, no alto da página. Ela fica apenas no `localStorage` deste navegador e viaja em cada requisição ao servidor local, que a repassa à TypeSafe — o servidor não guarda credencial, não a registra em log e não a devolve ao cliente. O botão **esquecer** apaga.
+
+Para quem roda local e não quer colar a chave toda vez, existe o caminho pela variável de ambiente:
+
+```bash
+cp .env.example .env.local    # preencha TYPESAFE_AI_API_KEY
+```
+
+Sem esse arquivo o servidor sobe igual (`--env-file-if-exists`) e usa a chave que vier do navegador.
+
+Escreva um pedido em português e clique em **Buscar por rodadas**. `Conferir tudo` roda a pontuação exaustiva para medir o que a amostragem deixou de fora.
 
 ## Por que não cabe numa chamada
 

@@ -81,6 +81,7 @@ const guidedBatch = (unseen: Restaurant[], winners: ScoredRow[], size: number) =
 export async function search(
   request: string,
   options: {
+    apiKey: string;
     box: Box | null;
     rounds?: number;
     confidenceWeight?: number;
@@ -111,7 +112,7 @@ export async function search(
     unseen = unseen.filter(restaurant => !taken.has(restaurant.id));
 
     const roundStarted = performance.now();
-    const { rows, meta } = await rankCandidates(batch, request);
+    const { rows, meta } = await rankCandidates(batch, request, options.apiKey);
     calls += meta.calls;
     inputTokens += meta.inputTokens;
     judged.push(...rows.map(row => ({ ...row, round: index + 1 })));

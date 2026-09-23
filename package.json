@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Busca de restaurantes Michelin com o Jev (TypeSafe AI): amostragem por rodadas sobre 6.802 restaurantes, com mapa mundial",
   "scripts": {
-    "serve": "node --env-file=.env.local server.ts",
+    "serve": "node --env-file-if-exists=.env.local server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

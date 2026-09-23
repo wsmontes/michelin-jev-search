@@ -5,10 +5,13 @@ import {
   experimental_evaluate as evaluate,
   type Experimental_EvaluationModel,
 } from 'ai';
-import { typeSafeAi } from '@ai-sdk/typesafe-ai';
+import { createTypeSafeAi } from '@ai-sdk/typesafe-ai';
 import { restaurants, type Restaurant } from './catalog.ts';
 
-const MODEL: Experimental_EvaluationModel = typeSafeAi.evaluationModel('jev-latest');
+// O modelo é construído por chamada, com a chave que veio do navegador: o
+// servidor não guarda credencial nenhuma.
+const modelFor = (apiKey: string): Experimental_EvaluationModel =>
+  createTypeSafeAi({ apiKey }).evaluationModel('jev-latest');
 
 export const BATCH_SIZE = 250;
 export const CONCURRENCY = 6;
@@ -72,9 +75,13 @@ const questionsFor = (rows: Restaurant[]) => {
 
 export type BatchResult = { rows: ScoredRow[]; inputTokens: number; outputTokens: number };
 
-export async function scoreBatch(rows: Restaurant[], request: string): Promise<BatchResult> {
+export async function scoreBatch(
+  rows: Restaurant[],
+  request: string,
+  apiKey: string,
+): Promise<BatchResult> {
   const result = await evaluate({
-    model: MODEL,
+    model: modelFor(apiKey),
     state: { pedido: request },
     questions: questionsFor(rows),
   });
@@ -122,14 +129,18 @@ async function pool<T, R>(items: T[], limit: number, worker: (item: T) => Promis
   return results;
 }
 
-async function scoreAll(rows: Restaurant[], request: string): Promise<{ rows: ScoredRow[]; meta: ScoringMeta }> {
+async function scoreAll(
+  rows: Restaurant[],
+  request: string,
+  apiKey: string,
+): Promise<{ rows: ScoredRow[]; meta: ScoringMeta }> {
   const batches: Restaurant[][] = [];
   for (let index = 0; index < rows.length; index += BATCH_SIZE) {
     batches.push(rows.slice(index, index + BATCH_SIZE));
   }
 
   const started = performance.now();
-  const results = await pool(batches, CONCURRENCY, batch => scoreBatch(batch, request));
+  const results = await pool(batches, CONCURRENCY, batch => scoreBatch(batch, request, apiKey));
   const latencyMs = performance.now() - started;
   const inputTokens = results.reduce((sum, entry) => sum + entry.inputTokens, 0);
   const outputTokens = results.reduce((sum, entry) => sum + entry.outputTokens, 0);
@@ -146,15 +157,15 @@ async function scoreAll(rows: Restaurant[], request: string): Promise<{ rows: Sc
   };
 }
 
-export async function rankCandidates(candidates: Restaurant[], request: string) {
-  return scoreAll(candidates, request);
+export async function rankCandidates(candidates: Restaurant[], request: string, apiKey: string) {
+  return scoreAll(candidates, request, apiKey);
 }
 
 // Conferência: pontua o catálogo inteiro, sem amostragem nenhuma, para medir o
 // que as rodadas deixaram de ver. Ordenar por nota é o que torna isso um
 // gabarito — sem a ordenação, o "top 20" seria só as 20 primeiras linhas.
-export async function exhaustiveRank(request: string) {
-  const { rows, meta } = await scoreAll(restaurants, request);
+export async function exhaustiveRank(request: string, apiKey: string) {
+  const { rows, meta } = await scoreAll(restaurants, request, apiKey);
   rows.sort((a, b) => (b.score - a.score) || ((b.confidence ?? 0) - (a.confidence ?? 0)));
   return { rows, meta };
 }
