@@ -1,74 +1,74 @@
 # michelin-jev-search
 
-Busca de restaurantes por descrição livre sobre os **6.802 restaurantes** do Guia Michelin, usando o **Jev** (TypeSafe AI) como modelo de decisão e um mapa mundial para explorar o resultado.
+Free-text restaurant search over the **6,802 restaurants** in the Michelin Guide, using **Jev** (TypeSafe AI) as the decision model and a world map to explore the result.
 
-O Jev não gera texto: ele responde perguntas tipadas. Aqui cada restaurante vira uma pergunta de **nota 0–5** e a resposta é um número com distribuição de probabilidade por nível. O mapa mostra os 6.802 pontos; arrastar um retângulo restringe a área de onde a busca amostra.
+Jev does not generate text — it answers typed questions. Here each restaurant becomes a **0–5 score question**, and the answer is a number with a probability distribution over the rubric levels. The map shows all 6,802 points; dragging a rectangle narrows the area the search samples from.
 
-## Como rodar
+## Running it
 
-Precisa de Node 22+ (testado no 26) e de uma chave da TypeSafe ([console.typesafe.ai/keys](https://console.typesafe.ai/keys)).
+Requires Node 22+ (tested on 26) and a TypeSafe key ([console.typesafe.ai/keys](https://console.typesafe.ai/keys)).
 
 ```bash
 npm install
 npm run serve                  # http://localhost:8788
 ```
 
-Cole a chave no campo **chave da TypeSafe**, no alto da página. Ela fica apenas no `localStorage` deste navegador e viaja em cada requisição ao servidor local, que a repassa à TypeSafe — o servidor não guarda credencial, não a registra em log e não a devolve ao cliente. O botão **esquecer** apaga.
+Paste the key into the **chave da TypeSafe** field at the top of the page. It stays in that browser's `localStorage` and travels with each request to the local server, which forwards it to TypeSafe — the server stores no credential, never logs it and never sends it back to the client. The **esquecer** button clears it.
 
-Para quem roda local e não quer colar a chave toda vez, existe o caminho pela variável de ambiente:
+If you run locally and would rather not paste the key every time, use the environment variable instead:
 
 ```bash
-cp .env.example .env.local    # preencha TYPESAFE_AI_API_KEY
+cp .env.example .env.local    # fill in TYPESAFE_AI_API_KEY
 ```
 
-Sem esse arquivo o servidor sobe igual (`--env-file-if-exists`) e usa a chave que vier do navegador.
+Without that file the server still starts (`--env-file-if-exists`) and uses whatever key the browser sends.
 
-Escreva um pedido em português e clique em **Buscar por rodadas**. `Conferir tudo` roda a pontuação exaustiva para medir o que a amostragem deixou de fora.
+The interface, the rubrics and the sample requests are in Portuguese. Type a request and click **Buscar por rodadas**. **Conferir tudo** runs the exhaustive scoring to measure what the sampling missed.
 
-## Por que não cabe numa chamada
+## Why it does not fit in one call
 
-O teto da API é de **~64k tokens por requisição**, medido: 250 perguntas de Score = 58.988 tokens passam; 300 = HTTP 400 `max_tokens_exceeded`. Cada pergunta custa **236 tokens** (perfil compacto + 6 níveis de escala). Pontuar os 6.802 exigiria 28 chamadas.
+The API caps at **~64k tokens per request**, measured: 250 Score questions = 58,988 tokens pass; 300 = HTTP 400 `max_tokens_exceeded`. Each question costs **236 tokens** (compact profile + 6 rubric levels). Scoring all 6,802 would take 28 calls.
 
-## Como a busca funciona
+## How the search works
 
-1. **Rodada 1** — 250 restaurantes sorteados do catálogo (ou da área desenhada no mapa). O Jev dá nota a cada um.
-2. **Os 50 melhores** — por nota descontada pela confiança — definem de onde tirar os 250 seguintes.
-3. **Rodadas seguintes** — candidatos parecidos com os vencedores sobem na fila: mesma cidade, mesmo grupo de cozinha, mesma faixa de preço, mesma distinção. Um peso base e um sorteio no fim mantêm exploração.
-4. **Parada** — quando uma rodada inteira não traz nenhum nome novo ao top-20, ou no limite de rodadas escolhido.
+1. **Round 1** — 250 restaurants drawn at random from the catalogue (or from the rectangle drawn on the map). Jev scores each one.
+2. **The top 50** — by score discounted by confidence — decide where the next 250 come from.
+3. **Later rounds** — candidates resembling the winners move up the queue: same city, same cuisine group, same price band, same award. A base weight plus a final random draw keep some exploration.
+4. **Stopping** — when a whole round brings no new name into the top 20, or at the round limit you chose.
 
-O critério de ordenação é `nota × (1 − peso × (1 − confiança))`. O peso é ajustável na tela; a confiança **só pode derrubar** uma nota, nunca promover (veja abaixo).
+The ordering key is `score × (1 − weight × (1 − confidence))`. The weight is adjustable in the UI; confidence can only **lower** a score, never raise it (see below).
 
-## Números medidos
+## Measured numbers
 
-| | busca por rodadas (4) | conferência exaustiva |
+| | round-based search (4) | exhaustive check |
 |---|---|---|
-| restaurantes julgados | 1.000 de 6.802 (14,7%) | 6.802 |
-| requisições | 4 | 28 |
-| tempo | 2,7–3,5 s | 4,1–4,5 s |
-| custo | ~$0,0098 | ~$0,0672 |
-| acerto no top-20 real | 15–17 de 20 (75–85%) | — |
-| melhor achado na ordem real | 1º | — |
+| restaurants scored | 1,000 of 6,802 (14.7%) | 6,802 |
+| requests | 4 | 28 |
+| time | 2.7–3.5 s | 4.1–4.5 s |
+| cost | ~$0.0098 | ~$0.0672 |
+| hit rate on the true top 20 | 15–17 of 20 (75–85%) | — |
+| best find in the true order | 1st | — |
 
-A nota média por rodada sobe conforme o cerco aperta: 0,41 → 1,36 → 1,98 na mesma busca, e essa linha aparece na tela.
+The mean score per round rises as the net closes: 0.41 → 1.36 → 1.98 in the same search, and that line is shown in the UI.
 
-## Achado: confiança alta não é mérito
+## Finding: high confidence is not merit
 
-Medido num pedido de japonês: num lote misto o Jev fica com **confiança 0,84** nos restaurantes que ele descarta com certeza (a distribuição concentra no nível 0) e **0,59** entre candidatos bons e parecidos, que disputam probabilidade. Somar confiança como parcela positiva premiava "certamente não serve" e enchia a lista com a rodada aleatória. Por isso ela entra apenas como desconto.
+Measured on a request for quiet, inexpensive Japanese food: in a mixed batch Jev is **0.84 confident** about the restaurants it certainly rejects (the distribution concentrates on level 0) and **0.59 confident** among good, similar candidates competing for probability mass. Adding confidence as a positive term rewarded "certainly does not fit" and filled the list with round-1 items. That is why it only discounts.
 
-As notas, em si, são estáveis: o mesmo restaurante julgado em lote homogêneo deu nota média 0,79, e em lote misto 0,82 (maior diferença individual 0,14) — dá para comparar entre rodadas.
+The scores themselves are stable: the same restaurant scored a mean of 0.79 in a homogeneous batch and 0.82 in a mixed one (largest individual difference 0.14), so they can be compared across rounds.
 
-## Dados
+## Data
 
-`data/michelin_world.json` — 6.802 registros com nome, cidade, cozinha, preço, distinção (Bib Gourmand / 1–3 estrelas), review, e **coordenadas válidas em 100% dos casos**. Derivado de `Michelin - World - 2023_01_03 - Reviews - not complete 2.csv` do projeto Concierge-Collector.
+`data/michelin_world.json` — 6,802 records with name, city, cuisine, price, award (Bib Gourmand / 1–3 stars), review, and **valid coordinates in 100% of them**. Derived from `Michelin - World - 2023_01_03 - Reviews - not complete 2.csv` in the Concierge-Collector project.
 
-## Estrutura
+## Structure
 
-| arquivo | papel |
+| file | role |
 |---|---|
-| `catalog.ts` | carrega o catálogo, normaliza preço/estrelas/cozinha e define o pool de amostragem |
-| `search.ts` | as rodadas, o critério de seleção e a parada |
-| `scoring.ts` | julga em lotes de 250 e roda a conferência exaustiva |
+| `catalog.ts` | loads the catalogue, normalises price/stars/cuisine and defines the sampling pool |
+| `search.ts` | the rounds, the selection key and the stopping rule |
+| `scoring.ts` | scores in batches of 250 and runs the exhaustive check |
 | `server.ts` | `GET /api/catalog` · `POST /api/search` · `POST /api/exhaustive` |
-| `public/index.html` | mapa (Leaflet + tiles Esri), caixa de texto, linha do tempo das rodadas |
+| `public/index.html` | map (Leaflet + Esri tiles), request box, round timeline |
 
-A chave da TypeSafe fica só no servidor; o navegador nunca a vê.
+The TypeSafe key comes from the browser field and is used only for the duration of each request; the server keeps no copy. `/api/catalog` needs no key at all.
